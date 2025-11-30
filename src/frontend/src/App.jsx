@@ -357,14 +357,11 @@ function App() {
                   background, and why you're interested in this position.
                 </p>
 
-                <RecordingComponent onRecordingComplete={handleIntroductionComplete} />
-
-                {introTranscription && (
-                  <div className="transcription-review">
-                    <h3>Your Introduction (Transcribed)</h3>
-                    <p>{introTranscription}</p>
-                  </div>
-                )}
+                <RecordingComponent 
+                  onRecordingComplete={handleIntroductionComplete}
+                  transcription={introTranscription}
+                  isLoading={loading}
+                />
 
                 {loading && (
                   <div className="loading-state">
@@ -391,6 +388,8 @@ function App() {
                   <RecordingComponent
                     questionNumber={currentQuestionIndex + 1}
                     onRecordingComplete={handleAnswerComplete}
+                    transcription={transcriptions[currentQuestionIndex] || ''}
+                    isLoading={loading}
                   />
 
                   {evaluations[currentQuestionIndex] && (

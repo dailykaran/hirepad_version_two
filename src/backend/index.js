@@ -1,6 +1,7 @@
 // Load environment variables FIRST before anything else
 import path from 'path';
 import { fileURLToPath } from 'url';
+import fs from 'fs';
 import dotenv from 'dotenv';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -27,12 +28,27 @@ import { initializeMCPClient, closeMCPClient } from './services/mcpEmailService.
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// Create uploads directory if it doesn't exist
+const uploadsDir = path.resolve(__dirname, '../../uploads');
+
+try {
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+    console.log('✅ Created uploads directory:', uploadsDir);
+  }
+} catch (err) {
+  console.warn('⚠️  Could not create uploads directory:', err.message);
+}
+
 // Middleware
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(audioUploadMiddleware());
 app.use(sessionMiddleware);
+
+// Serve uploaded audio files as static content
+app.use('/uploads', express.static(uploadsDir));
 
 // Initialize MCP client on startup
 try {
