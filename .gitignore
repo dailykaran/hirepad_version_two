@@ -11,6 +11,7 @@ yarn.lock
 # Build outputs
 build/
 dist/
+uploads/
 *.tsbuildinfo
 
 # IDE and editor
