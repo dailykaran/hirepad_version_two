@@ -68,35 +68,142 @@ export function getSpeechClient() {
 }
 
 /**
+ * Validate audio buffer and check format
+ */
+function validateAudioBuffer(buffer) {
+  if (!buffer || buffer.length === 0) {
+    throw new Error('Audio buffer is empty');
+  }
+  
+  console.log(`📥 Audio buffer size: ${buffer.length} bytes`);
+  
+  // Check for WebM header (0x1A 0x45 0xDF 0xA3)
+  const isWebM = buffer[0] === 0x1a && buffer[1] === 0x45 && buffer[2] === 0xdf && buffer[3] === 0xa3;
+  
+  // Check for WAV header (0x52 0x49 0x46 0x46 = "RIFF")
+  const isWAV = buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46;
+  
+  // Check for MP3 header (0xFF 0xFB or 0xFF 0xFA)
+  const isMP3 = (buffer[0] === 0xff && (buffer[1] === 0xfb || buffer[1] === 0xfa));
+  
+  const format = isWebM ? 'WebM' : isWAV ? 'WAV' : isMP3 ? 'MP3' : 'UNKNOWN';
+  console.log(`📊 Audio format: ${format} (header: ${buffer.slice(0, 4).toString('hex').toUpperCase()})`);
+  
+  return { format, isWebM, isWAV, isMP3 };
+}
+
+/**
+ * Extract audio duration from WebM header if possible
+ */
+function extractWebMDuration(buffer) {
+  try {
+    // WebM format is complex, return 0 to indicate we can't extract
+    // The actual duration will come from frontend
+    return 0;
+  } catch (error) {
+    return 0;
+  }
+}
+
+/**
+ * Estimate audio duration from buffer size and sample rate
+ * @param {Buffer} audioBuffer - Audio data buffer
+ * @param {number} sampleRate - Sample rate in Hz
+ * @returns {number} Estimated duration in seconds
+ */
+function estimateAudioDuration(audioBuffer, sampleRate = 48000) {
+  // Rough estimation: for WEBM_OPUS, assume ~1 byte per ~100 samples
+  // This is a heuristic; actual size depends on compression
+  // For safety, assume higher compression ratio
+  const bytesPerSecond = sampleRate / 100; // Very conservative estimate
+  return audioBuffer.length / bytesPerSecond;
+}
+
+/**
+ * Save audio buffer to local file system
+ * @param {Buffer} audioBuffer - Audio data
+ * @param {string} sessionID - Session identifier
+ * @param {string} audioType - Type of audio (introduction, answer_N)
+ * @returns {Promise<string>} Local file path relative to uploads directory
+ */
+export async function saveAudioLocally(audioBuffer, sessionID, audioType = 'audio') {
+  try {
+    const uploadsDir = path.resolve(path.dirname(__dirname), '../..', 'uploads');
+    
+    // Create uploads directory if it doesn't exist
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+    }
+
+    // Generate filename: sessionID_audioType_timestamp.webm
+    const fileName = `${sessionID}_${audioType}_${Date.now()}.webm`;
+    const filePath = path.join(uploadsDir, fileName);
+
+    // Write buffer to file
+    await fs.promises.writeFile(filePath, audioBuffer);
+
+    console.log(`💾 Audio saved locally: ${fileName}`);
+    return `/uploads/${fileName}`; // Return relative path for frontend access
+  } catch (error) {
+    console.error('Error saving audio locally:', error.message);
+    throw new Error(`Failed to save audio locally: ${error.message}`);
+  }
+}
+
+/**
  * Transcribe audio file using Google Cloud Speech-to-Text API
- * Automatically uses LongRunningRecognize for audio longer than 1 minute
+ * Automatically uses sync for short audio and longRunningRecognize for longer audio
  * @param {Buffer} audioBuffer - Audio buffer (WebM, WAV, MP3, FLAC, etc.)
  * @param {string} encoding - Audio encoding (LINEAR16, FLAC, MULAW, AMR, AMR_WB, OGG_OPUS, MP3, WEBM_OPUS)
+ * @param {string} sessionID - Session ID (optional, for logging only)
  * @returns {Promise<string>} Transcribed text
  */
-export async function transcribeAudio(audioBuffer, encoding = 'WEBM_OPUS') {
+export async function transcribeAudio(audioBuffer, encoding = 'WEBM_OPUS', sessionID = null) {
   try {
     // Check if buffer is empty
     if (!audioBuffer || audioBuffer.length === 0) {
       return 'No audio detected. Please try recording again.';
     }
 
+    console.log(`\n🎙️  Starting transcription for session ${sessionID}...`);
+
+    // Validate audio buffer format
+    const formatInfo = validateAudioBuffer(audioBuffer);
+
     // Get the client (lazy initialization)
     const client = getSpeechClient();
 
     // If Speech-to-Text client not available, use mock transcription
     if (!client) {
-      console.log('Using mock transcription (Speech-to-Text client not available)');
+      console.log('⚠️  Speech client unavailable, using mock');
       return getMockTranscription();
     }
 
+    // Set appropriate sample rate based on encoding
+    const sampleRateHertz = encoding === 'WEBM_OPUS' ? 48000 : 16000;
+
+    // Estimate audio duration
+    const estimatedDuration = estimateAudioDuration(audioBuffer, sampleRateHertz);
+    console.log(`📈 Estimated audio duration: ${estimatedDuration.toFixed(1)}s`);
+    console.log(`📊 Buffer size: ${audioBuffer.length} bytes, Format: ${formatInfo.format}`);
+
+    // Use inline transcription (sync for < 1min, async long-running for longer)
+    return await transcribeAudioInline(audioBuffer, encoding, sampleRateHertz, client, formatInfo);
+  } catch (error) {
+    console.error('❌ Error transcribing audio:', error.message);
+    // Fallback to mock transcription for development
+    console.log('⚠️  Falling back to mock transcription due to error');
+    return getMockTranscription();
+  }
+}
+
+/**
+ * Transcribe inline audio (for files < 10MB and < 5 minutes)
+ */
+async function transcribeAudioInline(audioBuffer, encoding, sampleRateHertz, client, formatInfo) {
+  try {
     // Convert buffer to base64
     const audioContent = audioBuffer.toString('base64');
-
-    // Set appropriate sample rate based on encoding
-    // WEBM_OPUS: 48000 Hz (standard for WebM Opus codec from browser MediaRecorder)
-    // Other encodings: typically 16000 Hz
-    const sampleRateHertz = encoding === 'WEBM_OPUS' ? 48000 : 16000;
 
     const request = {
       audio: {
@@ -107,20 +214,21 @@ export async function transcribeAudio(audioBuffer, encoding = 'WEBM_OPUS') {
         sampleRateHertz: sampleRateHertz,
         languageCode: 'en-US',
         enableAutomaticPunctuation: true,
-        model: 'latest_long',  // Use latest model for better accuracy
+        model: 'latest_long',
       },
     };
 
-    // Try sync recognize first (fast for short audio < 1 min)
+    // Try sync recognize first (for short audio < 1 min)
     try {
-      console.log('Attempting sync transcription (for audio < 1 minute)...');
+      console.log(`✅ Using SYNC transcription with encoding: ${encoding}`);
+      console.log('📡 Calling Google Speech-to-Text API (sync)...');
       const [response] = await client.recognize(request);
 
       if (!response.results || response.results.length === 0) {
+        console.log('⚠️  No transcription results');
         return 'No speech detected. Please try recording again.';
       }
 
-      // Combine all transcription results
       const transcription = response.results
         .map((result) => {
           if (!result.alternatives || result.alternatives.length === 0) {
@@ -130,24 +238,31 @@ export async function transcribeAudio(audioBuffer, encoding = 'WEBM_OPUS') {
         })
         .join(' ');
 
-      return transcription || 'No speech detected. Please try recording again.';
+      const finalText = transcription || 'No speech detected. Please try recording again.';
+      console.log(`✅ Sync transcription successful: "${finalText.substring(0, 50)}..."`);
+      return finalText;
     } catch (syncError) {
-      // If sync fails due to audio being too long, use async long-running recognize
-      if (syncError.message && syncError.message.includes('Sync input too long')) {
-        console.log('Audio too long for sync, attempting async long-running transcription...');
+      // If sync fails, use async long-running recognize
+      if (
+        syncError.message &&
+        (syncError.message.includes('Sync input too long') ||
+         syncError.message.includes('Inline audio exceeds duration limit') ||
+         syncError.code === 3) // INVALID_ARGUMENT
+      ) {
+        console.log(`❌ Sync transcription failed: ${syncError.message}`);
+        console.log('📢 Duration error in sync, trying async transcription...');
         
-        // Use longRunningRecognize for longer audio
         const [operation] = await client.longRunningRecognize(request);
-        console.log(`Waiting for long-running operation ${operation.name} to complete...`);
+        console.log(`⏳ Async operation started: ${operation.name}`);
+        console.log('⏳ Polling for results...');
         
-        // Wait for operation to complete (with timeout of 5 minutes)
         const [response] = await operation.promise();
 
         if (!response.results || response.results.length === 0) {
+          console.log('⚠️  No transcription results');
           return 'No speech detected. Please try recording again.';
         }
 
-        // Combine all transcription results
         const transcription = response.results
           .map((result) => {
             if (!result.alternatives || result.alternatives.length === 0) {
@@ -157,17 +272,17 @@ export async function transcribeAudio(audioBuffer, encoding = 'WEBM_OPUS') {
           })
           .join(' ');
 
-        return transcription || 'No speech detected. Please try recording again.';
+        const finalText = transcription || 'No speech detected. Please try recording again.';
+        console.log(`✅ Async transcription successful: "${finalText.substring(0, 50)}..."`);
+        return finalText;
       }
       
-      // For other errors, throw and handle below
+      // For other errors, throw
       throw syncError;
     }
   } catch (error) {
-    console.error('Error transcribing audio:', error.message);
-    // Fallback to mock transcription for development
-    console.log('Falling back to mock transcription due to error');
-    return getMockTranscription();
+    console.error('❌ Error in inline transcription:', error.message);
+    throw error;
   }
 }
 

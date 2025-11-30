@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import './RecordingComponent.css';
 
-export function RecordingComponent({ onRecordingComplete, questionNumber = null }) {
+export function RecordingComponent({ onRecordingComplete, questionNumber = null, transcription = null, isLoading = false }) {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [audioURL, setAudioURL] = useState(null);
@@ -107,6 +107,22 @@ export function RecordingComponent({ onRecordingComplete, questionNumber = null 
         <div className="recording-playback">
           <p>Recording saved</p>
           <audio src={audioURL} controls style={{ width: '100%' }} />
+        </div>
+      )}
+
+      {isLoading && (
+        <div className="transcription-loading">
+          <div className="spinner"></div>
+          <p>Transcribing audio...</p>
+        </div>
+      )}
+
+      {transcription && (
+        <div className="transcription-display">
+          <h4>📝 Transcription</h4>
+          <div className="transcription-text">
+            {transcription}
+          </div>
         </div>
       )}
     </div>

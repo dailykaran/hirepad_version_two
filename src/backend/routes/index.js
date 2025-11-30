@@ -1,5 +1,5 @@
 import express from 'express';
-import { transcribeAudio } from '../services/speechService.js';
+import { transcribeAudio, saveAudioLocally } from '../services/speechService.js';
 import { generateInterviewQuestions, evaluateAnswer, generateSummaryReport } from '../services/geminiService.js';
 import { sendInterviewReportEmail, initializeMCPClient, closeMCPClient } from '../services/mcpEmailService.js';
 
@@ -82,21 +82,26 @@ router.post('/upload-audio/introduction/:sessionID', async (req, res) => {
     const audioFile = req.files.audio;
     
     // Log file info for debugging
-    console.log(`Transcribing introduction for session ${sessionID}`);
-    console.log(`File size: ${audioFile.size} bytes, MIME type: ${audioFile.mimetype}`);
+    console.log(`\n📝 Transcribing introduction for session ${sessionID}`);
+    console.log(`📊 File size: ${audioFile.size} bytes, MIME type: ${audioFile.mimetype}`);
+    console.log(`⏱️  Duration from frontend: ${req.body.duration || 'not provided'} seconds`);
 
-    const transcription = await transcribeAudio(audioFile.data);
+    // Save audio locally
+    const audioUrl = await saveAudioLocally(audioFile.data, sessionID, 'introduction');
+
+    const transcription = await transcribeAudio(audioFile.data, 'WEBM_OPUS', sessionID);
 
     session.selfIntroduction.transcription = transcription;
-    session.selfIntroduction.audioUrl = `/audio/introduction/${sessionID}`;
+    session.selfIntroduction.audioUrl = audioUrl;
     session.selfIntroduction.duration = req.body.duration || 0;
 
     res.json({
       transcription,
+      audioUrl,
       message: 'Introduction transcribed successfully',
     });
   } catch (error) {
-    console.error('Error in upload-audio/introduction:', error);
+    console.error('❌ Error in upload-audio/introduction:', error);
     res.status(500).json({ error: error.message || 'Internal server error' });
   }
 });
@@ -172,21 +177,26 @@ router.post('/upload-audio/answer/:sessionID/:questionNumber', async (req, res) 
     const audioFile = req.files.audio;
     
     // Log file info for debugging
-    console.log(`Transcribing answer ${qNum + 1} for session ${sessionID}`);
-    console.log(`File size: ${audioFile.size} bytes, MIME type: ${audioFile.mimetype}`);
+    console.log(`\n📝 Transcribing answer ${qNum + 1} for session ${sessionID}`);
+    console.log(`📊 File size: ${audioFile.size} bytes, MIME type: ${audioFile.mimetype}`);
+    console.log(`⏱️  Duration from frontend: ${req.body.duration || 'not provided'} seconds`);
 
-    const transcription = await transcribeAudio(audioFile.data);
+    // Save audio locally
+    const audioUrl = await saveAudioLocally(audioFile.data, sessionID, `answer_${qNum + 1}`);
+
+    const transcription = await transcribeAudio(audioFile.data, 'WEBM_OPUS', sessionID);
 
     session.questions[qNum].answer.transcription = transcription;
-    session.questions[qNum].answer.audioUrl = `/audio/answer/${sessionID}/${questionNumber}`;
+    session.questions[qNum].answer.audioUrl = audioUrl;
     session.questions[qNum].answer.duration = req.body.duration || 0;
 
     res.json({
       transcription,
+      audioUrl,
       message: 'Answer transcribed successfully',
     });
   } catch (error) {
-    console.error('Error in upload-audio/answer:', error);
+    console.error('❌ Error in upload-audio/answer:', error);
     res.status(500).json({ error: error.message || 'Internal server error' });
   }
 });
@@ -293,10 +303,20 @@ router.post('/send-report/:sessionID', async (req, res) => {
     try {
       const emailResult = await sendInterviewReportEmail(session, recipients);
 
-      res.json({
-        message: 'Report sent successfully',
-        result: emailResult,
-      });
+      // Check if email sending was skipped (MCP not available)
+      if (!emailResult.success && emailResult.message.includes('skipped')) {
+        res.status(200).json({
+          message: 'Report generated successfully',
+          report: session.summaryReport,
+          emailStatus: 'skipped',
+          emailMessage: emailResult.message,
+        });
+      } else {
+        res.json({
+          message: 'Report sent successfully',
+          result: emailResult,
+        });
+      }
     } catch (emailError) {
       // Return error but don't fail - report was generated successfully
       console.warn('Email delivery failed but report was generated:', emailError.message);
