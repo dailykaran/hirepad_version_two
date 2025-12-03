@@ -133,7 +133,7 @@ export function useAPI() {
     }
   };
 
-  const uploadAudio = async (url, audioBlob, duration) => {
+  const uploadAudio = async (url, audioBlob, duration, language = 'en-US') => {
     setLoading(true);
     setError(null);
 
@@ -141,6 +141,7 @@ export function useAPI() {
       const formData = new FormData();
       formData.append('audio', audioBlob, 'recording.webm');
       formData.append('duration', duration);
+      formData.append('language', language);
 
       const response = await fetch(url, {
         method: 'POST',

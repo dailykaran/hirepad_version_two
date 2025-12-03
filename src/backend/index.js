@@ -23,6 +23,7 @@ import express from 'express';
 import cors from 'cors';
 import { audioUploadMiddleware, errorHandler, sessionMiddleware } from './middleware/index.js';
 import apiRoutes from './routes/index.js';
+// Use MCP service with updated SDK v1.23.0
 import { initializeMCPClient, closeMCPClient } from './services/mcpEmailService.js';
 
 const app = express();
@@ -85,11 +86,57 @@ app.use((req, res) => {
   });
 });
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`🚀 Backend server running on http://localhost:${PORT}`);
-  console.log(`📧 Email Provider: ${process.env.EMAIL_PROVIDER || 'not configured'}`);
-});
+// Start server with automatic port fallback on EADDRINUSE
+async function startServerWithFallback(startPort, maxAttempts = 5) {
+  let port = Number(startPort) || 5000;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      const server = app.listen(port);
+
+      // Wait for the 'listening' event to ensure the port was bound
+      await new Promise((resolve, reject) => {
+        const onListening = () => {
+          server.off('error', onError);
+          resolve();
+        };
+
+        const onError = (err) => {
+          server.off('listening', onListening);
+          reject(err);
+        };
+
+        server.once('listening', onListening);
+        server.once('error', onError);
+      });
+
+      console.log(`🚀 Backend server running on http://localhost:${port}`);
+      console.log(`📧 Email Provider: ${process.env.EMAIL_PROVIDER || 'not configured'}`);
+
+      // Graceful error handling for other runtime server errors
+      server.on('error', (err) => {
+        console.error('❌ Server runtime error:', err && err.message ? err.message : err);
+      });
+
+      return server;
+    } catch (err) {
+      if (err && err.code === 'EADDRINUSE') {
+        console.warn(`⚠️  Port ${port} is in use, trying port ${port + 1}...`);
+        port += 1; // try next port
+        continue;
+      }
+
+      console.error('❌ Failed to start server:', err && err.message ? err.message : err);
+      process.exit(1);
+    }
+  }
+
+  console.error(`❌ Unable to bind to a port after ${maxAttempts} attempts. Exiting.`);
+  process.exit(1);
+}
+
+// Start the server (top-level await allowed in this module)
+await startServerWithFallback(PORT, 6);
 
 // Graceful shutdown
 process.on('SIGINT', async () => {

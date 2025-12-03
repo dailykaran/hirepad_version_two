@@ -44,53 +44,61 @@ export function ResultsDisplay({ report, onDownloadPDF, onSendEmail }) {
     return <div className="results-display">No report available</div>;
   }
 
+  // Defensive defaults for fields that may be nested or missing
+  const candidateInfo = report.candidateInfo || { name: 'Candidate', position: '', interviewDate: new Date().toISOString() };
+  const perf = report.performanceMetrics || { averageScore: 0, communicationRating: 0, technicalRating: 0, confidenceLevel: '' };
+  const introductionHighlights = report.introductionHighlights || [];
+  const topStrengths = report.topStrengths || report.strengthsAndWeaknesses?.topStrengths || [];
+  const areasForImprovement = report.areasForImprovement || report.strengthsAndWeaknesses?.areasForImprovement || [];
+  const hiringRecommendation = report.hiringRecommendation || { level: '', reasoning: '', nextSteps: '' };
+
   return (
     <div className="results-display">
       <div className="results-header">
         <h1>Interview Results</h1>
-        <p>Comprehensive evaluation for {report.candidateInfo.name}</p>
+        <p>Comprehensive evaluation for {candidateInfo.name}</p>
       </div>
 
       <div className="candidate-info">
         <div className="info-item">
           <label>Candidate Name</label>
-          <span>{report.candidateInfo.name}</span>
+          <span>{candidateInfo.name}</span>
         </div>
         <div className="info-item">
           <label>Position</label>
-          <span>{report.candidateInfo.position}</span>
+          <span>{candidateInfo.position}</span>
         </div>
         <div className="info-item">
           <label>Interview Date</label>
-          <span>{new Date(report.candidateInfo.interviewDate).toLocaleDateString()}</span>
+          <span>{new Date(candidateInfo.interviewDate).toLocaleDateString()}</span>
         </div>
       </div>
 
       <div className="metrics-grid">
         <div className="metric-card">
           <label>Average Score</label>
-          <div className="metric-value">{report.performanceMetrics.averageScore.toFixed(1)}/100</div>
+          <div className="metric-value">{Number.isFinite(Number(perf.averageScore)) ? Number(perf.averageScore).toFixed(1) + '/100' : 'N/A'}</div>
           <div className="metric-bar">
             <div
               className="metric-fill"
-              style={{ width: `${report.performanceMetrics.averageScore}%` }}
+              style={{ width: `${Number.isFinite(Number(perf.averageScore)) ? Number(perf.averageScore) : 0}%` }}
             ></div>
           </div>
         </div>
 
         <div className="metric-card">
           <label>Communication Rating</label>
-          <div className="metric-value">{report.performanceMetrics.communicationRating}/5</div>
+          <div className="metric-value">{perf.communicationRating}/5</div>
         </div>
 
         <div className="metric-card">
           <label>Technical Rating</label>
-          <div className="metric-value">{report.performanceMetrics.technicalRating}/5</div>
+          <div className="metric-value">{perf.technicalRating}/5</div>
         </div>
 
         <div className="metric-card">
           <label>Confidence Level</label>
-          <div className="metric-value">{report.performanceMetrics.confidenceLevel}</div>
+          <div className="metric-value">{perf.confidenceLevel}</div>
         </div>
       </div>
 
@@ -98,7 +106,7 @@ export function ResultsDisplay({ report, onDownloadPDF, onSendEmail }) {
         <section className="results-section">
           <h2>Introduction Highlights</h2>
           <ul className="highlights-list">
-            {report.introductionHighlights.map((highlight, idx) => (
+            {introductionHighlights.map((highlight, idx) => (
               <li key={idx}>{highlight}</li>
             ))}
           </ul>
@@ -107,7 +115,7 @@ export function ResultsDisplay({ report, onDownloadPDF, onSendEmail }) {
         <section className="results-section">
           <h2>Top Strengths</h2>
           <ul className="strengths-list">
-            {report.topStrengths.map((strength, idx) => (
+            {topStrengths.map((strength, idx) => (
               <li key={idx}>✓ {strength}</li>
             ))}
           </ul>
@@ -116,7 +124,7 @@ export function ResultsDisplay({ report, onDownloadPDF, onSendEmail }) {
         <section className="results-section">
           <h2>Areas for Improvement</h2>
           <ul className="improvements-list">
-            {report.areasForImprovement.map((area, idx) => (
+            {areasForImprovement.map((area, idx) => (
               <li key={idx}>→ {area}</li>
             ))}
           </ul>
@@ -124,11 +132,11 @@ export function ResultsDisplay({ report, onDownloadPDF, onSendEmail }) {
 
         <section className="results-section">
           <h2>Hiring Recommendation</h2>
-          <div className={`recommendation-box ${getRecommendationColor(report.hiringRecommendation.level)}`}>
-            <div className="recommendation-level">{report.hiringRecommendation.level}</div>
-            <p>{report.hiringRecommendation.reasoning}</p>
+            <div className={`recommendation-box ${getRecommendationColor(hiringRecommendation.level)}`}>
+            <div className="recommendation-level">{hiringRecommendation.level}</div>
+            <p>{hiringRecommendation.reasoning}</p>
             <div className="next-steps">
-              <strong>Next Steps:</strong> {report.hiringRecommendation.nextSteps}
+              <strong>Next Steps:</strong> {hiringRecommendation.nextSteps}
             </div>
           </div>
         </section>
@@ -136,7 +144,7 @@ export function ResultsDisplay({ report, onDownloadPDF, onSendEmail }) {
 
       <div className="actions-container">
         <button className="btn btn-primary" onClick={onDownloadPDF}>
-          📥 Download PDF Report
+          📥 Download PDF or Txt Report
         </button>
         <button className="btn btn-secondary" onClick={() => setShowEmailForm(!showEmailForm)}>
           📧 Send Email Report

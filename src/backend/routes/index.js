@@ -1,6 +1,7 @@
 import express from 'express';
 import { transcribeAudio, saveAudioLocally } from '../services/speechService.js';
 import { generateInterviewQuestions, evaluateAnswer, generateSummaryReport } from '../services/geminiService.js';
+// Use MCP service with updated SDK v1.23.0
 import { sendInterviewReportEmail, initializeMCPClient, closeMCPClient } from '../services/mcpEmailService.js';
 
 const router = express.Router();
@@ -69,6 +70,7 @@ router.post('/session/init', (req, res) => {
 router.post('/upload-audio/introduction/:sessionID', async (req, res) => {
   try {
     const { sessionID } = req.params;
+    const { language = 'en-US' } = req.body;
     const session = sessions[sessionID];
 
     if (!session) {
@@ -85,15 +87,17 @@ router.post('/upload-audio/introduction/:sessionID', async (req, res) => {
     console.log(`\n📝 Transcribing introduction for session ${sessionID}`);
     console.log(`📊 File size: ${audioFile.size} bytes, MIME type: ${audioFile.mimetype}`);
     console.log(`⏱️  Duration from frontend: ${req.body.duration || 'not provided'} seconds`);
+    console.log(`🌐 Language: ${language}`);
 
     // Save audio locally
     const audioUrl = await saveAudioLocally(audioFile.data, sessionID, 'introduction');
 
-    const transcription = await transcribeAudio(audioFile.data, 'WEBM_OPUS', sessionID);
+    const transcription = await transcribeAudio(audioFile.data, 'WEBM_OPUS', sessionID, language);
 
     session.selfIntroduction.transcription = transcription;
     session.selfIntroduction.audioUrl = audioUrl;
     session.selfIntroduction.duration = req.body.duration || 0;
+    session.selfIntroduction.language = language;
 
     res.json({
       transcription,
@@ -123,7 +127,10 @@ router.post('/generate-questions/:sessionID', async (req, res) => {
       return res.status(400).json({ error: 'Introduction transcription required' });
     }
 
-    const questions = await generateInterviewQuestions(session.selfIntroduction.transcription);
+    // Get language from session
+    const language = session.selfIntroduction.language || 'en-US';
+
+    const questions = await generateInterviewQuestions(session.selfIntroduction.transcription, language);
 
     // Initialize question objects
     session.questions = questions.map((questionText, index) => ({
@@ -159,6 +166,7 @@ router.post('/generate-questions/:sessionID', async (req, res) => {
 router.post('/upload-audio/answer/:sessionID/:questionNumber', async (req, res) => {
   try {
     const { sessionID, questionNumber } = req.params;
+    const { language = 'en-US' } = req.body;
     const session = sessions[sessionID];
 
     if (!session) {
@@ -180,15 +188,17 @@ router.post('/upload-audio/answer/:sessionID/:questionNumber', async (req, res) 
     console.log(`\n📝 Transcribing answer ${qNum + 1} for session ${sessionID}`);
     console.log(`📊 File size: ${audioFile.size} bytes, MIME type: ${audioFile.mimetype}`);
     console.log(`⏱️  Duration from frontend: ${req.body.duration || 'not provided'} seconds`);
+    console.log(`🌐 Language: ${language}`);
 
     // Save audio locally
     const audioUrl = await saveAudioLocally(audioFile.data, sessionID, `answer_${qNum + 1}`);
 
-    const transcription = await transcribeAudio(audioFile.data, 'WEBM_OPUS', sessionID);
+    const transcription = await transcribeAudio(audioFile.data, 'WEBM_OPUS', sessionID, language);
 
     session.questions[qNum].answer.transcription = transcription;
     session.questions[qNum].answer.audioUrl = audioUrl;
     session.questions[qNum].answer.duration = req.body.duration || 0;
+    session.questions[qNum].answer.language = language;
 
     res.json({
       transcription,
@@ -226,7 +236,10 @@ router.post('/evaluate/:sessionID/:questionNumber', async (req, res) => {
       return res.status(400).json({ error: 'Answer transcription required' });
     }
 
-    const evaluation = await evaluateAnswer(question, answer);
+    // Get language from answer
+    const language = session.questions[qNum].answer.language || 'en-US';
+
+    const evaluation = await evaluateAnswer(question, answer, language);
     session.questions[qNum].evaluation = evaluation;
 
     res.json({
@@ -256,16 +269,26 @@ router.post('/generate-report/:sessionID', async (req, res) => {
     const scores = session.questions.map((q) => q.evaluation.score);
     const averageScore = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
 
+    // Get language from session
+    const language = session.selfIntroduction.language || 'en-US';
+
     // Generate comprehensive report
-    const reportData = await generateSummaryReport(session);
+    const reportData = await generateSummaryReport(session, language);
 
     // Update session with report
-    session.summaryReport.introductionHighlights = reportData.introductionHighlights;
-    session.summaryReport.performanceMetrics = reportData.performanceMetrics;
-    session.summaryReport.topStrengths = reportData.topStrengths;
-    session.summaryReport.areasForImprovement = reportData.areasForImprovement;
-    session.summaryReport.hiringRecommendation = reportData.hiringRecommendation;
+    // Map returned report fields into the session.summaryReport structure
+    session.summaryReport.introductionHighlights = reportData.introductionHighlights || [];
+    session.summaryReport.performanceMetrics = reportData.performanceMetrics || session.summaryReport.performanceMetrics || {};
+    // The session.summaryReport stores strengths/weaknesses under strengthsAndWeaknesses
+    session.summaryReport.strengthsAndWeaknesses = session.summaryReport.strengthsAndWeaknesses || { topStrengths: [], areasForImprovement: [] };
+    session.summaryReport.strengthsAndWeaknesses.topStrengths = reportData.topStrengths || [];
+    session.summaryReport.strengthsAndWeaknesses.areasForImprovement = reportData.areasForImprovement || [];
+    session.summaryReport.hiringRecommendation = reportData.hiringRecommendation || session.summaryReport.hiringRecommendation;
     session.summaryReport.reportGeneratedAt = new Date().toISOString();
+
+    // Also expose topStrengths/areasForImprovement at top-level for frontend compatibility
+    session.summaryReport.topStrengths = session.summaryReport.strengthsAndWeaknesses.topStrengths;
+    session.summaryReport.areasForImprovement = session.summaryReport.strengthsAndWeaknesses.areasForImprovement;
 
     // Calculate summary metrics if not provided by Gemini
     if (session.summaryReport.performanceMetrics.averageScore === 0) {
@@ -301,10 +324,27 @@ router.post('/send-report/:sessionID', async (req, res) => {
     }
 
     try {
+      // If a report hasn't been generated yet (or appears empty), generate it now
+      const needsReport = !session.summaryReport || !session.summaryReport.reportGeneratedAt || (session.summaryReport.introductionHighlights && session.summaryReport.introductionHighlights.length === 0);
+      if (needsReport) {
+        try {
+          const reportData = await generateSummaryReport(session);
+          session.summaryReport.introductionHighlights = reportData.introductionHighlights || [];
+          session.summaryReport.performanceMetrics = reportData.performanceMetrics || session.summaryReport.performanceMetrics || {};
+          session.summaryReport.strengthsAndWeaknesses = session.summaryReport.strengthsAndWeaknesses || { topStrengths: [], areasForImprovement: [] };
+          session.summaryReport.strengthsAndWeaknesses.topStrengths = reportData.topStrengths || [];
+          session.summaryReport.strengthsAndWeaknesses.areasForImprovement = reportData.areasForImprovement || [];
+          session.summaryReport.hiringRecommendation = reportData.hiringRecommendation || session.summaryReport.hiringRecommendation;
+          session.summaryReport.reportGeneratedAt = new Date().toISOString();
+        } catch (genErr) {
+          console.warn('Failed to generate report before sending email:', genErr && genErr.message);
+        }
+      }
+
       const emailResult = await sendInterviewReportEmail(session, recipients);
 
       // Check if email sending was skipped (MCP not available)
-      if (!emailResult.success && emailResult.message.includes('skipped')) {
+      if (!emailResult.success && emailResult.message && emailResult.message.includes('skipped')) {
         res.status(200).json({
           message: 'Report generated successfully',
           report: session.summaryReport,
@@ -319,11 +359,11 @@ router.post('/send-report/:sessionID', async (req, res) => {
       }
     } catch (emailError) {
       // Return error but don't fail - report was generated successfully
-      console.warn('Email delivery failed but report was generated:', emailError.message);
+      console.warn('Email delivery failed but report was generated:', emailError && emailError.message);
       res.status(200).json({
         message: 'Report generated but email delivery failed',
         report: session.summaryReport,
-        emailError: emailError.message,
+        emailError: emailError && emailError.message,
       });
     }
   } catch (error) {

@@ -1,3 +1,62 @@
+## Copilot Instructions — AI HR Interviewer MCP (concise)
+
+Purpose: enable AI coding agents to be immediately productive in this repo by documenting
+the architecture, critical workflows, integration points, and local commands.
+
+- **Quick start (dev)**:
+  - Install: `npm run install-all` (root). 
+  - Run dev (frontend + backend): `npm run dev`.
+  - Health: `GET http://localhost:5000/health`.
+
+- **Big-picture architecture**:
+  - Frontend: React app in `src/frontend/` — `App.jsx` implements four states: `welcome` → `intro` → `interview` → `results`.
+  - Backend: Node/Express in `src/backend/` — `index.js` loads `.env` first, initializes MCP client, and mounts routes in `src/backend/routes/index.js`.
+  - Services: LLM, speech, and email logic live in `src/backend/services/`:
+    - `geminiService.js` — generates 7 questions, evaluates answers, and synthesizes reports (mock fallback when `GEMINI_API_KEY` absent).
+    - `speechService.js` — normalizes uploaded audio to LINEAR16 WAV and calls Google Speech-to-Text.
+    - `mcpEmailService.js` — spawns MCP transport and sends base64 PDF attachments.
+
+- **Session & data flow**:
+  - Sessions stored in-memory (sessions[sessionID]) as defined in `routes/index.js`. Key fields: `selfIntroduction`, `questions[]` (each: `answer`, `evaluation`), `summaryReport`.
+  - Upload audio via multipart/form-data endpoints; backend converts/normalizes then transcribes.
+
+- **Critical endpoints (examples)**:
+  - `POST /api/session/init` → create session
+  - `POST /api/upload-audio/introduction/:id`
+  - `POST /api/generate-questions/:id`
+  - `POST /api/upload-audio/answer/:id/:qNum`
+  - `POST /api/evaluate/:id/:qNum`
+  - `POST /api/generate-report/:id`
+  - `POST /api/send-report/:id`
+
+- **Environment & secrets**:
+  - `.env` must be loaded before other imports — `src/backend/index.js` depends on this ordering.
+  - Important vars: `GEMINI_API_KEY`, `GOOGLE_APPLICATION_CREDENTIALS`, `GOOGLE_CLOUD_PROJECT_ID`, `EMAIL_PROVIDER`, `SENDGRID_API_KEY`, `SENDGRID_FROM_EMAIL`, `HR_EMAIL_RECIPIENTS`.
+
+- **Project-specific patterns & conventions**:
+  - Audio normalization: backend expects LINEAR16@16000Hz; front-end MediaRecorder blobs are normalized in `speechService.js`.
+  - Gemini calls use strict JSON output expectations — callers use `try/catch` around `JSON.parse()` and fall back to mocks.
+  - MCP client uses a spawned process via `StdioClientTransport` — watch for the external process lifecycle in logs.
+  - **Nodemailer MCP Server** (`src/backend/mcp-servers/nodemailer-mcp-server.js`) implements `send_email` tool via SMTP; spawned when `EMAIL_PROVIDER=smtp`.
+  - In-memory sessions are intentionally ephemeral (MVP). Do not assume persistence across restarts.
+
+- **Where to look for examples**:
+  - `src/frontend/src/components/RecordingComponent.jsx` — how audio is captured and passed to `useAudioRecorder`.
+  - `src/frontend/src/hooks/useAudioRecorder.js` — upload helper and API call flow.
+  - `src/backend/routes/index.js` — session lifecycle and endpoint validation.
+  - `src/backend/services/geminiService.js` — prompts, temperature settings (`0.7` for Qs, `0.3` for evaluations), and mock mode.
+
+- **Testing & debugging hints**:
+  - Use `curl` against endpoints to inspect session objects: `curl http://localhost:5000/api/session/<sessionID>`.
+  - Check backend logs for `✅`/`❌` markers showing env and MCP init status.
+  - If transcriptions fail, confirm audio normalization and `GOOGLE_APPLICATION_CREDENTIALS` validity.
+
+- **When making changes**:
+  - Preserve the `.env` load ordering in `src/backend/index.js`.
+  - Keep service boundaries: LLM logic in `geminiService.js`, audio logic in `speechService.js`, email in `mcpEmailService.js`, SMTP in `mcp-servers/nodemailer-mcp-server.js`.
+  - Update `MD_Files/` docs (e.g., `API_REFERENCE.md`, `SETUP.md`, `NODEMAILER_SETUP.md`) when changing endpoints or workflows.
+
+If anything here is unclear or you want more detail about a specific file or flow, tell me which area and I'll expand the instructions.
 # AI HR Interviewer MCP - Copilot Instructions
 
 ## Project Overview

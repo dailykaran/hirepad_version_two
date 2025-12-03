@@ -156,9 +156,10 @@ export async function saveAudioLocally(audioBuffer, sessionID, audioType = 'audi
  * @param {Buffer} audioBuffer - Audio buffer (WebM, WAV, MP3, FLAC, etc.)
  * @param {string} encoding - Audio encoding (LINEAR16, FLAC, MULAW, AMR, AMR_WB, OGG_OPUS, MP3, WEBM_OPUS)
  * @param {string} sessionID - Session ID (optional, for logging only)
+ * @param {string} languageCode - Language code (en-US, ta-IN, hi-IN, etc.)
  * @returns {Promise<string>} Transcribed text
  */
-export async function transcribeAudio(audioBuffer, encoding = 'WEBM_OPUS', sessionID = null) {
+export async function transcribeAudio(audioBuffer, encoding = 'WEBM_OPUS', sessionID = null, languageCode = 'en-US') {
   try {
     // Check if buffer is empty
     if (!audioBuffer || audioBuffer.length === 0) {
@@ -186,9 +187,10 @@ export async function transcribeAudio(audioBuffer, encoding = 'WEBM_OPUS', sessi
     const estimatedDuration = estimateAudioDuration(audioBuffer, sampleRateHertz);
     console.log(`📈 Estimated audio duration: ${estimatedDuration.toFixed(1)}s`);
     console.log(`📊 Buffer size: ${audioBuffer.length} bytes, Format: ${formatInfo.format}`);
+    console.log(`🌐 Language: ${languageCode}`);
 
     // Use inline transcription (sync for < 1min, async long-running for longer)
-    return await transcribeAudioInline(audioBuffer, encoding, sampleRateHertz, client, formatInfo);
+    return await transcribeAudioInline(audioBuffer, encoding, sampleRateHertz, client, formatInfo, languageCode);
   } catch (error) {
     console.error('❌ Error transcribing audio:', error.message);
     // Fallback to mock transcription for development
@@ -200,7 +202,7 @@ export async function transcribeAudio(audioBuffer, encoding = 'WEBM_OPUS', sessi
 /**
  * Transcribe inline audio (for files < 10MB and < 5 minutes)
  */
-async function transcribeAudioInline(audioBuffer, encoding, sampleRateHertz, client, formatInfo) {
+async function transcribeAudioInline(audioBuffer, encoding, sampleRateHertz, client, formatInfo, languageCode = 'en-US') {
   try {
     // Convert buffer to base64
     const audioContent = audioBuffer.toString('base64');
@@ -212,7 +214,7 @@ async function transcribeAudioInline(audioBuffer, encoding, sampleRateHertz, cli
       config: {
         encoding: encoding,
         sampleRateHertz: sampleRateHertz,
-        languageCode: 'en-US',
+        languageCode: languageCode,
         enableAutomaticPunctuation: true,
         model: 'latest_long',
       },

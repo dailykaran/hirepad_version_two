@@ -11,6 +11,7 @@ function App() {
   const [appState, setAppState] = useState('welcome'); // welcome, intro, interview, results
   const [sessionID, setSessionID] = useState(null);
   const [candidateInfo, setCandidateInfo] = useState({ name: '', position: '' });
+  const [language, setLanguage] = useState('en-US'); // en-US, ta-IN (Tamil), hi-IN (Hindi)
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [questions, setQuestions] = useState([]);
   const [transcriptions, setTranscriptions] = useState({});
@@ -42,6 +43,7 @@ function App() {
         `/api/upload-audio/introduction/${sessionID}`,
         recordingData.blob,
         recordingData.duration,
+        language,
       );
 
       setIntroTranscription(response.transcription);
@@ -74,6 +76,7 @@ function App() {
         `/api/upload-audio/answer/${sessionID}/${currentQuestionIndex + 1}`,
         recordingData.blob,
         recordingData.duration,
+        language,
       );
 
       setTranscriptions({
@@ -116,6 +119,55 @@ function App() {
     }
 
     try {
+      if (language === 'ta-IN') {
+        // Generate text summary in frontend (same format as backend text)
+        const lines = [];
+        lines.push('Interview Summary Report');
+        lines.push(`Candidate: ${report.candidateInfo.name || 'N/A'}`);
+        lines.push(`Position: ${report.candidateInfo.position || 'N/A'}`);
+        lines.push('');
+        const metrics = report.performanceMetrics || {};
+        lines.push('Performance Metrics:');
+        lines.push(`  Average Score: ${metrics.averageScore ?? 'N/A'}`);
+        lines.push(`  Communication Rating: ${metrics.communicationRating ?? 'N/A'}`);
+        lines.push(`  Technical Rating: ${metrics.technicalRating ?? 'N/A'}`);
+        lines.push(`  Confidence Level: ${metrics.confidenceLevel ?? 'N/A'}`);
+        lines.push('');
+        lines.push('Top Strengths:');
+        (report.topStrengths || []).forEach(s => lines.push(`  - ${s}`));
+        lines.push('');
+        lines.push('Areas For Improvement:');
+        (report.areasForImprovement || []).forEach(a => lines.push(`  - ${a}`));
+        lines.push('');
+        lines.push('Questions & Answers:');
+        (questions || []).forEach((q, idx) => {
+          lines.push(`Q${idx + 1}: ${q}`);
+          lines.push(`A: ${transcriptions[idx] || 'No answer recorded'}`);
+          const ev = evaluations[idx] || {};
+          if (ev.score) lines.push(`Score: ${ev.score}/100`);
+          if (ev.feedback) lines.push(`Feedback: ${ev.feedback}`);
+          lines.push('');
+        });
+        lines.push('Hiring Recommendation:');
+        if (report.hiringRecommendation) {
+          lines.push(`  Level: ${report.hiringRecommendation.level}`);
+          lines.push(`  Reasoning: ${report.hiringRecommendation.reasoning}`);
+          lines.push(`  Next Steps: ${report.hiringRecommendation.nextSteps}`);
+        }
+
+        const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
+        const fileName = `interview_report_${report.candidateInfo.name.replace(/\s+/g, '_')}_${Date.now()}.txt`;
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(link.href);
+        return;
+      }
+
+      // Existing PDF generation code for non-Tamil languages
       const doc = new jsPDF();
       const pageWidth = doc.internal.pageSize.getWidth();
       const pageHeight = doc.internal.pageSize.getHeight();
@@ -254,8 +306,8 @@ function App() {
       const fileName = `interview_report_${report.candidateInfo.name.replace(/\s+/g, '_')}_${Date.now()}.pdf`;
       doc.save(fileName);
     } catch (error) {
-      setError(`Failed to generate PDF: ${error.message}`);
-      console.error('PDF generation error:', error);
+      setError(`Failed to generate download: ${error.message}`);
+      console.error('Download error:', error);
     }
   };
 
@@ -274,6 +326,7 @@ function App() {
     setAppState('welcome');
     setSessionID(null);
     setCandidateInfo({ name: '', position: '' });
+    setLanguage('en-US');
     setCurrentQuestionIndex(0);
     setQuestions([]);
     setTranscriptions({});
@@ -335,6 +388,18 @@ function App() {
                     }
                     disabled={loading}
                   />
+                </div>
+
+                <div className="form-group">
+                  <label>Interview Language</label>
+                  <select
+                    value={language}
+                    onChange={(e) => setLanguage(e.target.value)}
+                    disabled={loading}
+                  >
+                      <option value="en-US">English (US)</option>
+                      <option value="ta-IN">Tamil (India)</option>
+                  </select>
                 </div>
 
                 <button
@@ -441,7 +506,7 @@ function App() {
 
         {/* Footer */}
         <footer className="app-footer">
-          <p>© 2024 AI HR Interviewer. Powered by Google Gemini and Speech-to-Text.</p>
+          <p>© 2025 AI HR Interviewer. Powered by Google Gemini and Speech-to-Text.</p>
         </footer>
       </div>
     </div>

@@ -4,6 +4,7 @@ import { jsPDF } from 'jspdf';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import fs from 'fs';
 
 // Get the directory of the current file
 const __filename = fileURLToPath(import.meta.url);
@@ -54,22 +55,32 @@ export async function initializeMCPClient() {
       // Mark as configured but don't spawn MCP - we'll use direct Gmail API
       return;
     } else if (emailProvider === 'smtp') {
-      args = [process.env.SMTP_MCP_SERVER_PATH || './smtp-mcp-server.js'];
+      // Use nodemailer MCP server for SMTP delivery
+      const nodemailerServerPath = process.env.SMTP_MCP_SERVER_PATH || 
+                                   path.resolve(__dirname, '../mcp-servers/nodemailer-mcp-server.js');
+      args = [nodemailerServerPath];
       env = {
         ...process.env,
         SMTP_HOST: process.env.SMTP_HOST,
         SMTP_PORT: process.env.SMTP_PORT,
         SMTP_USER: process.env.SMTP_USER,
         SMTP_PASSWORD: process.env.SMTP_PASSWORD,
+        SMTP_FROM_EMAIL: process.env.SMTP_FROM_EMAIL,
+        SMTP_USE_TLS: process.env.SMTP_USE_TLS,
       };
     }
 
     // Only spawn for non-Gmail providers
     if (emailProvider !== 'gmail') {
+      console.log(`🔧 Spawning ${emailProvider} MCP server...`);
+      console.log(`   Command: ${command}`);
+      console.log(`   Args: ${args.join(' ')}`);
+
       mcpTransport = new StdioClientTransport({
         command,
         args,
         env,
+        stdio: ['pipe', 'pipe', 'inherit'], // Show stderr from child process
       });
 
       mcpClient = new Client(
@@ -82,12 +93,36 @@ export async function initializeMCPClient() {
         },
       );
 
-      await mcpClient.connect(mcpTransport);
-      console.log(`✅ MCP client initialized with ${emailProvider} provider`);
+      // Log before connecting
+      console.log(`🔗 Connecting to MCP server...`);
+
+      // Add timeout to connection
+      const connectionPromise = mcpClient.connect(mcpTransport);
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('MCP connection timeout (30s)')), 30000)
+      );
+
+      await Promise.race([connectionPromise, timeoutPromise]);
+      console.log(`✅ MCP client connected and initialized with ${emailProvider} provider`);
+      
+      // Test ListTools to verify connection
+      try {
+        const tools = await mcpClient.listTools();
+        console.log(`✅ Verified ${tools.tools.length} tool(s) available on MCP server`);
+      } catch (e) {
+        console.warn(`⚠️  Could not verify tools: ${e.message}`);
+      }
     }
   } catch (error) {
     console.warn(`⚠️  Failed to initialize MCP client (${process.env.EMAIL_PROVIDER}):`, error.message);
     console.warn('Email delivery will not be available. This is OK for development mode.');
+    if (mcpTransport) {
+      try {
+        await mcpTransport.close();
+      } catch (e) {
+        // Ignore close errors
+      }
+    }
     mcpClient = null;
     mcpTransport = null;
   }
@@ -96,6 +131,34 @@ export async function initializeMCPClient() {
 /**
  * Generate PDF report from candidate session
  */
+// Corrected the Tamil font file path to ensure it resolves correctly
+const tamilFontPath = path.resolve(__dirname, '../../../assets/fonts/NotoSansTamil-Regular.ttf');
+const tamilFontBase64 = fs.readFileSync(tamilFontPath, 'base64');
+
+// Register Tamil font
+jsPDF.API.events.push(['addFonts', function () {
+  this.addFileToVFS('TamilFont.ttf', tamilFontBase64);
+  this.addFont('TamilFont.ttf', 'TamilFont', 'normal');
+}]);
+
+// Helper function to dynamically load fonts based on language
+function loadFontForLanguage(language) {
+  const fonts = {
+    'ta-IN': {
+      base64: fs.readFileSync(path.resolve(__dirname, '../../../assets/fonts/NotoSansTamil-Regular.ttf'), 'base64'),
+      name: 'NotoSansTamil',
+      fileName: 'NotoSansTamil-Regular.ttf'
+    },
+    'en-US': {
+      base64: null, // Default font used by jsPDF
+      name: 'Helvetica',
+    },
+  };
+
+  return fonts[language] || fonts['en-US'];
+}
+
+// Updated generatePDFReport to use dynamic fonts
 export function generatePDFReport(candidateSession) {
   try {
     const doc = new jsPDF();
@@ -103,6 +166,16 @@ export function generatePDFReport(candidateSession) {
     const pageHeight = doc.internal.pageSize.getHeight();
     const margin = 15;
     let yPosition = 20;
+
+    // Load font based on language
+    const language = candidateSession.selfIntroduction.language || 'en-US';
+    const font = loadFontForLanguage(language);
+
+    if (font.base64) {
+      doc.addFileToVFS(`${font.name}.ttf`, font.base64);
+      doc.addFont(`${font.name}.ttf`, font.name, 'normal');
+      doc.setFont(font.name);
+    }
 
     // Helper function to add text with word wrap
     const addText = (text, options = {}) => {
@@ -202,6 +275,41 @@ export function generatePDFReport(candidateSession) {
     });
     yPosition += 5;
 
+    // Interview Questions & Answers
+    doc.setFontSize(12);
+    doc.setFont(undefined, 'bold');
+    doc.text('Interview Questions & Answers', margin, yPosition);
+    yPosition += 8;
+    doc.setFont(undefined, 'normal');
+    doc.setFontSize(10);
+
+    if (candidateSession.questions && candidateSession.questions.length > 0) {
+      candidateSession.questions.forEach((q, idx) => {
+        // Question number and text
+        doc.setFont(undefined, 'bold');
+        addText(`Q${idx + 1}: ${q.questionText}`, { fontSize: 10, lineHeight: 6 });
+        
+        // Answer
+        doc.setFont(undefined, 'normal');
+        const answerText = q.answer?.transcription || 'No answer provided';
+        addText(`A: ${answerText}`, { fontSize: 9, lineHeight: 6 });
+        
+        // Score and feedback
+        if (q.evaluation) {
+          addText(`Score: ${q.evaluation.score}/100 | Feedback: ${q.evaluation.feedback || 'N/A'}`, {
+            fontSize: 9,
+            lineHeight: 6,
+          });
+        }
+        
+        yPosition += 3; // Add spacing between Q&A pairs
+      });
+    } else {
+      addText('No questions and answers recorded', { fontSize: 10, lineHeight: 6 });
+    }
+
+    yPosition += 5;
+
     // Hiring Recommendation
     doc.setFontSize(12);
     doc.setFont(undefined, 'bold');
@@ -215,6 +323,13 @@ export function generatePDFReport(candidateSession) {
     addText(`Reasoning: ${rec.reasoning}`, { fontSize: 10, lineHeight: 6 });
     addText(`Next Steps: ${rec.nextSteps}`, { fontSize: 10, lineHeight: 6 });
 
+    // Example: Use dynamic font for localized text
+    if (language === 'ta-IN') {
+      addText('தமிழ் மொழியில் அறிக்கை', { fontSize: 18, fontStyle: 'bold' });
+    } else if (language === 'hi-IN') {
+      addText('हिंदी में रिपोर्ट', { fontSize: 18, fontStyle: 'bold' });
+    }
+
     return doc.output('arraybuffer');
   } catch (error) {
     console.error('Error generating PDF:', error);
@@ -222,10 +337,52 @@ export function generatePDFReport(candidateSession) {
   }
 }
 
+// Generate plain text report (for Tamil email/attachment)
+export function generateTextReport(candidateSession) {
+  const sb = [];
+  const info = candidateSession.summaryReport.candidateInfo || {};
+  sb.push('Interview Summary Report');
+  sb.push(`Candidate: ${info.name || 'N/A'}`);
+  sb.push(`Position: ${info.position || 'N/A'}`);
+  sb.push('');
+  const metrics = candidateSession.summaryReport.performanceMetrics || {};
+  sb.push('Performance Metrics:');
+  sb.push(`  Average Score: ${metrics.averageScore ?? 'N/A'}`);
+  sb.push(`  Communication Rating: ${metrics.communicationRating ?? 'N/A'}`);
+  sb.push(`  Technical Rating: ${metrics.technicalRating ?? 'N/A'}`);
+  sb.push(`  Confidence Level: ${metrics.confidenceLevel ?? 'N/A'}`);
+  sb.push('');
+  const topStrengths = candidateSession.summaryReport.topStrengths || candidateSession.summaryReport.strengthsAndWeaknesses?.topStrengths || [];
+  sb.push('Top Strengths:');
+  topStrengths.forEach((s) => sb.push(`  - ${s}`));
+  sb.push('');
+  const areas = candidateSession.summaryReport.areasForImprovement || candidateSession.summaryReport.strengthsAndWeaknesses?.areasForImprovement || [];
+  sb.push('Areas For Improvement:');
+  areas.forEach((a) => sb.push(`  - ${a}`));
+  sb.push('');
+  sb.push('Questions & Answers:');
+  (candidateSession.questions || []).forEach((q, idx) => {
+    sb.push(`Q${idx + 1}: ${q.questionText || ''}`);
+    sb.push(`A: ${q.answer?.transcription || 'No answer provided'}`);
+    if (q.evaluation) {
+      sb.push(`Score: ${q.evaluation.score ?? 'N/A'}`);
+      sb.push(`Feedback: ${q.evaluation.feedback || 'N/A'}`);
+    }
+    sb.push('');
+  });
+  const rec = candidateSession.summaryReport.hiringRecommendation || {};
+  sb.push('Hiring Recommendation:');
+  sb.push(`  Level: ${rec.level || 'N/A'}`);
+  sb.push(`  Reasoning: ${rec.reasoning || 'N/A'}`);
+  sb.push(`  Next Steps: ${rec.nextSteps || 'N/A'}`);
+
+  return sb.join('\n');
+}
+
 /**
  * Send Gmail via Google API directly (bypassing MCP)
  */
-async function sendGmailDirect(candidateSession, recipients, pdfBase64) {
+async function sendGmailDirect(candidateSession, recipients, contentBase64, contentType, filename) {
   try {
     const { google } = await import('googleapis');
     
@@ -278,10 +435,10 @@ async function sendGmailDirect(candidateSession, recipients, pdfBase64) {
     emailContent += `Content-Type: text/html; charset="UTF-8"${nl}${nl}`;
     emailContent += emailBody + nl;
     emailContent += `--${boundary}${nl}`;
-    emailContent += `Content-Type: application/pdf; name="${candidateName}_Interview_Report.pdf"${nl}`;
-    emailContent += `Content-Disposition: attachment; filename="${candidateName}_Interview_Report.pdf"${nl}`;
+    emailContent += `Content-Type: ${contentType}; name="${filename}"${nl}`;
+    emailContent += `Content-Disposition: attachment; filename="${filename}"${nl}`;
     emailContent += `Content-Transfer-Encoding: base64${nl}${nl}`;
-    emailContent += pdfBase64 + nl;
+    emailContent += contentBase64 + nl;
     emailContent += `--${boundary}--`;
 
     const message = {
@@ -313,12 +470,27 @@ export async function sendInterviewReportEmail(candidateSession, recipients) {
   const emailProvider = process.env.EMAIL_PROVIDER || 'sendgrid';
   
   try {
-    const pdfBuffer = generatePDFReport(candidateSession);
-    const pdfBase64 = Buffer.from(pdfBuffer).toString('base64');
+    const isTamil = candidateSession.selfIntroduction?.language === 'ta-IN';
+
+    let attachmentBase64;
+    let attachmentType;
+    let attachmentFilename;
+
+    if (isTamil) {
+      const text = generateTextReport(candidateSession);
+      attachmentBase64 = Buffer.from(text, 'utf8').toString('base64');
+      attachmentType = 'text/plain; charset=UTF-8';
+      attachmentFilename = `${candidateSession.summaryReport.candidateInfo.name}_Interview_Report.txt`;
+    } else {
+      const pdfBuffer = generatePDFReport(candidateSession);
+      attachmentBase64 = Buffer.from(pdfBuffer).toString('base64');
+      attachmentType = 'application/pdf';
+      attachmentFilename = `${candidateSession.summaryReport.candidateInfo.name}_Interview_Report.pdf`;
+    }
 
     // Handle Gmail directly
     if (emailProvider === 'gmail') {
-      return await sendGmailDirect(candidateSession, recipients, pdfBase64);
+      return await sendGmailDirect(candidateSession, recipients, attachmentBase64, attachmentType, attachmentFilename);
     }
 
     // Handle other providers via MCP
@@ -360,21 +532,34 @@ export async function sendInterviewReportEmail(candidateSession, recipients) {
   </body>
 </html>`;
 
-    const emailResult = await mcpClient.callTool('send_email', {
-      to: Array.isArray(recipients) ? recipients : [recipients],
-      subject: `Interview Summary - ${candidateSession.summaryReport.candidateInfo.name}`,
-      html: emailBody,
-      attachments: [
-        {
-          content: pdfBase64,
-          filename: `${candidateSession.summaryReport.candidateInfo.name}_Interview_Report.pdf`,
-          type: 'application/pdf',
-          disposition: 'attachment',
-        },
-      ],
-    });
+    console.log(`📧 Calling MCP send_email tool...`);
+    console.log(`   Recipients: ${Array.isArray(recipients) ? recipients.join(', ') : recipients}`);
+    console.log(`   Attachment size: ${attachmentBase64.length} bytes`);
 
-    console.log('✅ Email sent successfully');
+    const emailResult = await Promise.race([
+      mcpClient.callTool('send_email', {
+        to: Array.isArray(recipients) ? recipients : [recipients],
+        subject: `Interview Summary - ${candidateSession.summaryReport.candidateInfo.name}`,
+        html: emailBody,
+        attachments: [
+          {
+            content: attachmentBase64,
+            filename: attachmentFilename,
+            type: attachmentType,
+            disposition: 'attachment',
+          },
+        ],
+      }),
+      new Promise((_, reject) =>
+        setTimeout(
+          () => reject(new Error('MCP tool call timeout (60s) - server may be unresponsive')),
+          60000
+        )
+      ),
+    ]);
+
+    console.log('✅ Email sent successfully via MCP');
+    console.log(`   Result: ${JSON.stringify(emailResult).substring(0, 100)}...`);
     return emailResult;
   } catch (error) {
     console.error('❌ Error sending email:', error.message);
