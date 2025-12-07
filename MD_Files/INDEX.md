@@ -1,4 +1,4 @@
-# 📑 AI HR Interviewer - Documentation Index
+# 📑 Hirepad - Documentation Index
 
 ## 🌟 Start Here
 
@@ -304,5 +304,5 @@ npm run dev
 ---
 
 *Last Updated: November 28, 2024*  
-*AI HR Interviewer Application - Complete Build*  
+*Hirepad Application - Complete Build*  
 *Status: ✅ Ready for Development & Deployment*

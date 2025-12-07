@@ -1,4 +1,4 @@
-# API Reference - AI HR Interviewer
+# API Reference - Hirepad
 
 ## Base URL
 ```

@@ -1,4 +1,4 @@
-# 🎉 AI HR Interviewer - Complete Build Summary
+# 🎉 Hirepad - Complete Build Summary
 
 ## What You Got
 

@@ -1,4 +1,4 @@
-# ✨ AI HR Interviewer Application - Build Complete!
+# ✨ Hirepad Application - Build Complete!
 
 ## 🎉 Summary
 

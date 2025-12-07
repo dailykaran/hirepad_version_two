@@ -32,14 +32,23 @@ function initializeSpeechClient() {
     }
 
     if (!credentialsPath) {
-      console.warn('⚠️  GOOGLE_APPLICATION_CREDENTIALS path not configured. Speech-to-Text will use mock transcriptions.');
+      console.warn('⚠️  GOOGLE_APPLICATION_CREDENTIALS path not configured.');
+      console.warn('   To enable Speech-to-Text:');
+      console.warn('   1. Download service account JSON from Google Cloud Console');
+      console.warn('   2. Set GOOGLE_APPLICATION_CREDENTIALS in .env');
+      console.warn('   Speech-to-Text will use mock transcriptions.');
       return null;
     }
 
     // Check if credentials file exists
     if (!fs.existsSync(credentialsPath)) {
-      console.warn(`⚠️  Credentials file not found at: ${credentialsPath}`);
-      console.warn('Speech-to-Text will use mock transcriptions.');
+      console.warn(`⚠️  ❌ Credentials file NOT FOUND`);
+      console.warn(`   Expected location: ${credentialsPath}`);
+      console.warn(`   Real path checked: ${path.resolve(credentialsPath)}`);
+      console.warn('   To fix:');
+      console.warn('   1. Verify the file exists at that location');
+      console.warn('   2. Or use relative path: GOOGLE_APPLICATION_CREDENTIALS=./credentials.json');
+      console.warn('   Speech-to-Text will use mock transcriptions.');
       return null;
     }
 

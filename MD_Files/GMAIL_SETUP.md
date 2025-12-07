@@ -2,7 +2,7 @@
 
 ## Overview
 
-This guide walks you through setting up Gmail authentication for automated email delivery in the AI HR Interviewer application.
+This guide walks you through setting up Gmail authentication for automated email delivery in the Hirepad application.
 
 ## Quick Start
 
@@ -227,7 +227,7 @@ npm run get-gmail-token
 
 **Solution:**
 1. Go to https://myaccount.google.com/permissions
-2. Find and remove "AI HR Interviewer" app
+2. Find and remove "Hirepad" app
 3. Clear browser cookies for accounts.google.com
 4. Run `npm run get-gmail-token` again
 

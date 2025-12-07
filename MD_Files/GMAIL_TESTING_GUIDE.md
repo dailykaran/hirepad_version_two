@@ -1,6 +1,6 @@
 # Gmail Email Delivery Testing Guide
 
-This guide explains how to test Gmail email delivery in the AI HR Interviewer application.
+This guide explains how to test Gmail email delivery in the Hirepad application.
 
 ## Step 1: Verify Gmail API is Enabled
 

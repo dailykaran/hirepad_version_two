@@ -208,7 +208,7 @@ function App() {
       };
 
       // Title
-      addText('AI HR Interview Report', 18, true, true);
+      addText('Hirepad Interview Report', 18, true, true);
       yPosition += 5;
 
       // Candidate Info
@@ -342,8 +342,11 @@ function App() {
         {/* Header */}
         <header className="app-header">
           <div className="header-content">
-            <h1 className="app-title">🎤 AI HR Interviewer</h1>
-            <p className="app-subtitle">Automated Audio Interview System</p>
+            <div className="header-logo">📋</div>
+            <div className="header-text">
+              <h1 className="app-title">Hirepad</h1>
+              <p className="app-subtitle">Automated Audio Interview System</p>
+            </div>
           </div>
         </header>
 
@@ -360,7 +363,7 @@ function App() {
           {appState === 'welcome' && (
             <section className="welcome-section">
               <div className="welcome-card">
-                <h2>Welcome to AI HR Interview</h2>
+                <h2>Welcome to Hirepad</h2>
                 <p>
                   Complete a comprehensive audio interview to be evaluated by our AI system. The
                   process takes approximately 15-20 minutes.
@@ -506,7 +509,7 @@ function App() {
 
         {/* Footer */}
         <footer className="app-footer">
-          <p>© 2025 AI HR Interviewer. Powered by Google Gemini and Speech-to-Text.</p>
+          <p>© 2025 Hirepad. Powered by Google Gemini and Speech-to-Text.</p>
         </footer>
       </div>
     </div>

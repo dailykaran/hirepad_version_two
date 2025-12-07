@@ -1,7 +1,7 @@
 {
   "name": "ai-hr-interviewer-backend",
   "version": "1.0.0",
-  "description": "Backend for AI HR Interviewer application",
+  "description": "Backend for Hirepad application",
   "type": "module",
   "main": "index.js",
   "scripts": {

@@ -1,4 +1,4 @@
-## Copilot Instructions — AI HR Interviewer MCP (concise)
+## Copilot Instructions — Hirepad MCP (concise)
 
 Purpose: enable AI coding agents to be immediately productive in this repo by documenting
 the architecture, critical workflows, integration points, and local commands.
@@ -57,7 +57,7 @@ the architecture, critical workflows, integration points, and local commands.
   - Update `MD_Files/` docs (e.g., `API_REFERENCE.md`, `SETUP.md`, `NODEMAILER_SETUP.md`) when changing endpoints or workflows.
 
 If anything here is unclear or you want more detail about a specific file or flow, tell me which area and I'll expand the instructions.
-# AI HR Interviewer MCP - Copilot Instructions
+# Hirepad MCP - Copilot Instructions
 
 ## Project Overview
 An MVP AI-powered HR recruitment application conducting automated audio interviews using Google Gemini, Speech-to-Text, and MCP for email delivery. The system records candidate responses, transcribes them in real-time, asks AI-generated questions, evaluates answers, and emails comprehensive reports.

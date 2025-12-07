@@ -1,4 +1,4 @@
-# AI HR Interviewer - Setup & Getting Started Guide
+# Hirepad - Setup & Getting Started Guide
 
 ## What Was Built
 

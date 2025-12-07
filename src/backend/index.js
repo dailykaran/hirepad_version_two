@@ -16,6 +16,10 @@ if (envResult.error) {
   console.log('✅ .env loaded successfully');
   console.log('   GOOGLE_CLOUD_PROJECT_ID:', process.env.GOOGLE_CLOUD_PROJECT_ID ? '✅ Set' : '❌ Not set');
   console.log('   GEMINI_API_KEY:', process.env.GEMINI_API_KEY ? '✅ Set' : '❌ Not set');
+  console.log('   GOOGLE_APPLICATION_CREDENTIALS:', process.env.GOOGLE_APPLICATION_CREDENTIALS ? '✅ Set' : '❌ Not set');
+  if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+    console.log('      Path:', process.env.GOOGLE_APPLICATION_CREDENTIALS);
+  }
 }
 
 // Now import everything else
@@ -25,6 +29,8 @@ import { audioUploadMiddleware, errorHandler, sessionMiddleware } from './middle
 import apiRoutes from './routes/index.js';
 // Use MCP service with updated SDK v1.23.0
 import { initializeMCPClient, closeMCPClient } from './services/mcpEmailService.js';
+// Initialize Speech-to-Text client to check status
+import { getSpeechClient } from './services/speechService.js';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -39,6 +45,15 @@ try {
   }
 } catch (err) {
   console.warn('⚠️  Could not create uploads directory:', err.message);
+}
+
+// Initialize Speech-to-Text client to check status
+console.log('\n📊 Checking service initialization status...');
+const speechClient = getSpeechClient();
+if (speechClient) {
+  console.log('✅ Speech-to-Text client initialized');
+} else {
+  console.warn('⚠️  Speech-to-Text client unavailable (will use mock transcriptions)');
 }
 
 // Middleware

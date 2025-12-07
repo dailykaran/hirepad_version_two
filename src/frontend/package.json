@@ -1,7 +1,7 @@
 {
   "name": "ai-hr-interviewer-frontend",
   "version": "1.0.0",
-  "description": "Frontend for AI HR Interviewer application",
+  "description": "Frontend for Hirepad application",
   "private": true,
   "proxy": "http://localhost:5000",
   "dependencies": {

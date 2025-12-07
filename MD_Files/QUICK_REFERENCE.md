@@ -1,4 +1,4 @@
-# 🎯 Quick Reference Card - AI HR Interviewer
+# 🎯 Quick Reference Card - Hirepad
 
 ## 🚀 Start Here (5 minutes)
 

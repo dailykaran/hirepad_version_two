@@ -1,4 +1,4 @@
-# AI HR Interviewer Application
+# Hirepad
 
 Automated audio interview platform powered by Google Gemini, Speech-to-Text, and Gmail for email delivery. Features real-time audio transcription, AI-powered evaluation, and comprehensive interview reports.
 
@@ -301,7 +301,7 @@ For issues or questions:
 
 ## License
 
-Proprietary - AI HR Interviewer
+Proprietary - Hirepad
 
 ## Recent Updates
 
